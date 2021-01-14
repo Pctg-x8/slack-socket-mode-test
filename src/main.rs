@@ -1,5 +1,6 @@
 
 use async_std::stream::StreamExt;
+use futures_util::sink::SinkExt;
 
 #[derive(serde::Deserialize, Debug)]
 pub struct OpenConnectionsResponse {
@@ -17,7 +18,15 @@ pub async fn open_connections(token: &str) -> surf::Result<OpenConnectionsRespon
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum SocketModeMessage<'s> {
     Hello {  },
-    Disconnect { reason: &'s str }
+    Disconnect { reason: &'s str },
+    EventsApi { envelope_id: &'s str }
+}
+
+#[derive(serde::Serialize)]
+pub struct SocketModeAcknowledgeMessage<'s> {
+    pub envelope_id: &'s str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload: Option<&'s str>
 }
 
 #[async_std::main]
@@ -39,7 +48,17 @@ async fn main() {
         match m.expect("Failed to decode websocket frame") {
             tungstenite::Message::Text(t) => match serde_json::from_str(&t) {
                 Ok(SocketModeMessage::Hello { .. }) => { println!("Hello: {}", t); },
-                Ok(SocketModeMessage::Disconnect { reason, .. }) => { println!("Disconnect request: {}", reason); },
+                Ok(SocketModeMessage::Disconnect { reason, .. }) => { println!("Disconnect request: {}", reason); break; },
+                Ok(SocketModeMessage::EventsApi { envelope_id, .. }) => {
+                    println!("Events API Message: {}", t);
+                    stream.send(
+                        tungstenite::Message::Text(
+                            serde_json::to_string(
+                                &SocketModeAcknowledgeMessage { envelope_id, payload: None }
+                            ).expect("Failed to serialize ack message")
+                        )
+                    ).await.expect("Failed to reply ack message");
+                }
                 Err(e) => { println!("Unknown text frame: {}: {:?}", t, e); }
             },
             tungstenite::Message::Ping(bytes) => {

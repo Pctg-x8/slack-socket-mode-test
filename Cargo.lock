@@ -1425,6 +1425,7 @@ dependencies = [
  "async-tls",
  "async-tungstenite",
  "dotenv",
+ "futures-util",
  "serde",
  "serde_json",
  "surf",
